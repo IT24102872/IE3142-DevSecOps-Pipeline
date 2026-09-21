@@ -63,7 +63,7 @@ jobs:
       - name: Build Docker image
         run: docker build -t nodegoat:ci .
       - name: Trivy scan (fails on High/Critical)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.20.0
         with:
           image-ref: 'nodegoat:ci'
           severity: 'CRITICAL,HIGH'
