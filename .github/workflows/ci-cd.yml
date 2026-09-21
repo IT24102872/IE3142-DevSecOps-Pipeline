@@ -9,6 +9,14 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    env:
+      MONGO_URI: ${{ secrets.MONGO_URI }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      CRYPTO_KEY: ${{ secrets.CRYPTO_KEY }}
+      ZAP_API_KEY: ${{ secrets.ZAP_API_KEY }}
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
