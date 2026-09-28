@@ -16,7 +16,6 @@ jobs:
       DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
       CRYPTO_KEY: ${{ secrets.CRYPTO_KEY }}
       ZAP_API_KEY: ${{ secrets.ZAP_API_KEY }}
-
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -69,39 +68,34 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
 
-    dast-zap:
-      runs-on: ubuntu-latest
-      needs: build-and-test
-      steps:
-        - uses: actions/checkout@v4
-
-        - name: Start MongoDB
-          run: |
-            docker run -d --name mongo-test -p 27017:27017 mongo:4.4
-            sleep 5
-
-        - name: Build Docker image
-          run: docker build -t nodegoat:ci .
-
-        - name: Run application
-          run: |
-            docker run -d --name nodegoat-test \
-              -p 4000:4000 \
-              -e MONGO_URI="mongodb://mongo:27017/nodegoat" \
-              -e NODE_ENV="development" \
-              nodegoat:ci
-            sleep 15
-            curl -I http://localhost:4000 || true
-
-        - name: ZAP Baseline Scan
-          uses: zaproxy/action-baseline@v0.12.0
-          with:
-            target: 'http://localhost:4000'
-            rules_file_name: '.zap/rules.tsv'
-            cmd_options: '-a'
-
-        - name: Cleanup
-          if: always()
-          run: |
-            docker stop nodegoat-test mongo-test || true
-            docker rm nodegoat-test mongo-test || true
+  dast-zap:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start MongoDB
+        run: |
+          docker run -d --name mongo-test -p 27017:27017 mongo:4.4
+          sleep 5
+      - name: Build Docker image
+        run: docker build -t nodegoat:ci .
+      - name: Run application
+        run: |
+          docker run -d --name nodegoat-test \
+            -p 4000:4000 \
+            -e MONGO_URI="mongodb://mongo:27017/nodegoat" \
+            -e NODE_ENV="development" \
+            nodegoat:ci
+          sleep 15
+          curl -I http://localhost:4000 || true
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          target: 'http://localhost:4000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+      - name: Cleanup
+        if: always()
+        run: |
+          docker stop nodegoat-test mongo-test || true
+          docker rm nodegoat-test mongo-test || true
