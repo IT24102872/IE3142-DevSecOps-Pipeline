@@ -73,20 +73,28 @@ jobs:
     needs: build-and-test
     steps:
       - uses: actions/checkout@v4
+      - name: Create Docker network
+        run: docker network create devsecops-net
       - name: Start MongoDB
         run: |
-          docker run -d --name mongo-test -p 27017:27017 mongo:4.4
-          sleep 5
+          docker run -d --name mongo-test --network devsecops-net mongo:4.4
+          sleep 15
       - name: Build Docker image
-        run: docker build -t nodegoat:ci .
+        run: docker build -t nodegoat:local .
       - name: Run application
         run: |
           docker run -d --name nodegoat-test \
+            --network devsecops-net \
             -p 4000:4000 \
-            -e MONGO_URI="mongodb://mongo:27017/nodegoat" \
+            -e MONGO_URI="mongodb://mongo-test:27017/nodegoat" \
+            -e MONGODB_URI="mongodb://mongo-test:27017/nodegoat" \
             -e NODE_ENV="development" \
-            nodegoat:ci
-          sleep 15
+            -e PORT=4000 \
+            nodegoat:local
+          sleep 20
+          echo "=== App logs ==="
+          docker logs nodegoat-test | tail -20
+          echo "=== Curl test ==="
           curl -I http://localhost:4000 || true
       - name: ZAP Baseline Scan
         uses: zaproxy/action-baseline@v0.12.0
@@ -100,3 +108,4 @@ jobs:
         run: |
           docker stop nodegoat-test mongo-test || true
           docker rm nodegoat-test mongo-test || true
+          docker network rm devsecops-net || true
