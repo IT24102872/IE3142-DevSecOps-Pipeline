@@ -17,8 +17,8 @@ jobs:
       CRYPTO_KEY: ${{ secrets.CRYPTO_KEY }}
       ZAP_API_KEY: ${{ secrets.ZAP_API_KEY }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '18'
       - run: npm install
@@ -27,7 +27,7 @@ jobs:
   sast-semgrep:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Install and run Semgrep
         run: |
           pip install semgrep
@@ -36,8 +36,8 @@ jobs:
   dependency-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '18'
       - run: npm install
@@ -47,22 +47,22 @@ jobs:
   secrets-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
       - name: Gitleaks scan
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   container-scan:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Build Docker image
         run: docker build -t nodegoat:ci .
       - name: Trivy scan (fails on High/Critical)
-        uses: aquasecurity/trivy-action@v0.36.0
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
         with:
           image-ref: 'nodegoat:ci'
           severity: 'CRITICAL,HIGH'
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
       - name: Create Docker network
         run: docker network create devsecops-net
       - name: Start MongoDB
@@ -97,7 +97,7 @@ jobs:
           echo "=== Curl test ==="
           curl -I http://localhost:4000 || true
       - name: ZAP Baseline Scan
-        uses: zaproxy/action-baseline@v0.12.0
+        uses: zaproxy/action-baseline@906a3c93ffde4864839d31a93daadcbd2737b4da
         with:
           target: 'http://localhost:4000'
           rules_file_name: '.zap/rules.tsv'
