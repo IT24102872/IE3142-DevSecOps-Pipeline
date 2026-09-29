@@ -8,10 +8,20 @@ services:
       MONGODB_URI: mongodb://mongo:27017/nodegoat
     command: sh -c "until nc -z -w 2 mongo 27017 && echo 'mongo is ready for connections' && node artifacts/db-reset.js && npm start; do sleep 2; done"
     ports:
-      - "4000:4000"
-
-  mongo:
-    image: mongo:4.4
+      - "4000:4000"       #ADD
+    depends_on:            #ADD
+      - mongo
+    networks:              #ADD
+      - app-network
+            
+  mongo:                     #ADD
+    image: mongo:4.4           #ADD
     user: mongodb
     expose:
       - 27017
+    networks:              # ADD
+      - app-network        # ADD
+
+networks:                  # ADD (at the very bottom, no indent)
+  app-network:             # ADD
+    driver: bridge         # ADD
