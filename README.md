@@ -85,31 +85,53 @@ By default the application will be hosted on port 4000 and will connect to a Mon
 
 Other settings can be changed by updating the [config file](https://github.com/OWASP/NodeGoat/blob/master/config/env/all.js).
 
-### OPTION 2 - Run NodeGoat on Docker
+### OPTION 2 - Run NodeGoat on Docker (used in this project)
 
-The repo includes the Dockerfile and docker-compose.yml necessary to set up the app and db instance, then connect them together.
+The repo includes a `Dockerfile` and `docker-compose.yml` that start the NodeGoat web app and its MongoDB database with a single command.
 
-1) Install [docker](https://docs.docker.com/installation/) and [docker compose](https://docs.docker.com/compose/install/) 
+#### Prerequisites
+- Docker Desktop installed and running
+- Ports `4000` free on your machine
 
-2) Clone the github repository:
-   ```
-   git clone https://github.com/OWASP/NodeGoat.git
-   ```
+#### Run the application
+1) Clone this repository:
+```
+   git clone <YOUR-GROUP-REPO-URL>
+```
 
-3) Go to the directory:
-   ```
-   cd NodeGoat
-   ```
+2) Go to the project directory:
+```
+   cd IE3142-DevSecOps-Pipeline
+```
 
-4) Build the images:
-   ```
-   docker-compose build
-   ```
+3) Build and start both containers in the background:
+```
+   docker-compose up --build -d
+```
 
-5) Run the app, this starts the NodeGoat application at http://localhost:4000/:
-   ```
-   docker-compose up
-   ```
+4) Confirm both containers are running:
+```
+   docker ps
+```
+   You should see one container for `web` (port `4000`) and one for `mongo`.
+
+5) Open the app at http://localhost:4000/
+
+#### Stop the application
+```
+docker-compose down
+```
+
+#### How the containers are set up
+| Service | Image / Build | Port | Notes |
+|---------|---------------|------|-------|
+| `web`   | Built from the local `Dockerfile` (Node.js / Express) | `4000:4000` published to host | Waits for MongoDB, seeds the database with `artifacts/db-reset.js`, then runs `npm start` |
+| `mongo` | `mongo:4.4` | `27017` exposed to the Docker network only | Not reachable from the host, only from the `web` container |
+
+#### Troubleshooting
+- **Port already in use:** stop whatever is using port 4000, or change the left side of `"4000:4000"` in `docker-compose.yml`.
+- **Web container keeps restarting:** run `docker-compose logs web` and check whether MongoDB is up.
+- **Start fresh:** `docker-compose down -v` then `docker-compose up --build -d`.
 
 ### OPTION 3 - Deploy to Heroku
 
