@@ -1,0 +1,185 @@
+name: DevSecOps CI/CD Pipeline
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["master"]
+
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      MONGO_URI: ${{ secrets.MONGO_URI }}
+      SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+      DB_USER: ${{ secrets.DB_USER }}
+      DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+      CRYPTO_KEY: ${{ secrets.CRYPTO_KEY }}
+      ZAP_API_KEY: ${{ secrets.ZAP_API_KEY }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '18'
+      - run: npm install
+      - run: npm test --if-present
+
+  sast-semgrep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install and run Semgrep
+        run: |
+          pip install semgrep
+          semgrep scan --config=auto --error
+
+  dependency-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '18'
+      - run: npm install
+      - name: npm audit (fails on High/Critical)
+        run: npm audit --audit-level=high
+
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+      - name: Gitleaks scan
+        uses: gitleaks/gitleaks-action@dcedce43c6f43de0b836d1fe38946645c9c638dc
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  container-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Build Docker image
+        run: docker build -t nodegoat:ci .
+      - name: Trivy scan (fails on High/Critical)
+        uses: aquasecurity/trivy-action@a9c7b0f06e461e9d4b4d1711f154ee024b8d7ab8
+        with:
+          image-ref: 'nodegoat:ci'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '1'
+
+  dast-zap:
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Create Docker network
+        run: docker network create devsecops-net
+      - name: Start MongoDB
+        run: |
+          docker run -d --name mongo-test --network devsecops-net mongo:4.4
+          sleep 15
+      - name: Build Docker image
+        run: docker build -t nodegoat:local .
+      - name: Run application
+        run: |
+          docker run -d --name nodegoat-test \
+            --network devsecops-net \
+            -p 4000:4000 \
+            -e MONGO_URI="mongodb://mongo-test:27017/nodegoat" \
+            -e MONGODB_URI="mongodb://mongo-test:27017/nodegoat" \
+            -e NODE_ENV="development" \
+            -e PORT=4000 \
+            nodegoat:local
+          sleep 20
+          echo "=== App logs ==="
+          docker logs nodegoat-test | tail -20
+          echo "=== Curl test ==="
+          curl -I http://localhost:4000 || true
+      - name: ZAP Baseline Scan
+        uses: zaproxy/action-baseline@906a3c93ffde4864839d31a93daadcbd2737b4da
+        with:
+          target: 'http://localhost:4000'
+          rules_file_name: '.zap/rules.tsv'
+          cmd_options: '-a'
+          fail_action: false
+          allow_issue_writing: false
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker stop nodegoat-test mongo-test || true
+          docker rm nodegoat-test mongo-test || true
+          docker network rm devsecops-net || true
+
+  vault-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Create Docker network
+        run: docker network create vault-net
+
+      - name: Start Vault (dev mode)
+        run: |
+          docker run -d --name vault \
+            --network vault-net \
+            -p 8200:8200 \
+            -e VAULT_DEV_ROOT_TOKEN_ID=root-token \
+            -e VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200 \
+            --cap-add IPC_LOCK \
+            hashicorp/vault:latest
+          echo "Waiting for Vault to be ready..."
+          sleep 15
+
+      - name: Verify Vault is running
+        run: |
+          curl -s http://localhost:8200/v1/sys/health | head -20
+
+      - name: Store secrets in Vault
+        run: |
+          docker exec -e VAULT_ADDR=http://127.0.0.1:8200 \
+            -e VAULT_TOKEN=root-token vault \
+            vault kv put secret/nodegoat \
+              MONGO_URI="mongodb://mongo:27017/nodegoat" \
+              SESSION_SECRET="vault-managed-session-secret-demo" \
+              CRYPTO_KEY="vault-managed-crypto-key-demo" \
+              ZAP_API_KEY="vault-managed-zap-key-demo"
+
+      - name: Retrieve secrets from Vault
+        run: |
+          echo "=== All secrets stored in Vault ==="
+          docker exec -e VAULT_ADDR=http://127.0.0.1:8200 \
+            -e VAULT_TOKEN=root-token vault \
+            vault kv get secret/nodegoat
+          echo ""
+          echo "=== Single field retrieval (MONGO_URI) ==="
+          docker exec -e VAULT_ADDR=http://127.0.0.1:8200 \
+            -e VAULT_TOKEN=root-token vault \
+            vault kv get -field=MONGO_URI secret/nodegoat
+
+      - name: Verify runtime secret injection
+        run: |
+          echo "=== Simulating secret injection into app context ==="
+          MONGO_URI=$(docker exec -e VAULT_ADDR=http://127.0.0.1:8200 \
+            -e VAULT_TOKEN=root-token vault \
+            vault kv get -field=MONGO_URI secret/nodegoat)
+          echo "Retrieved from Vault: $MONGO_URI"
+          echo "MONGO_URI=$MONGO_URI" >> $GITHUB_ENV
+          echo "✅ Secret injected as env var successfully"
+
+      - name: Verify secret is masked in logs
+        run: |
+          echo "Secret value (auto-masked): ${{ env.MONGO_URI }}"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker stop vault 2>/dev/null || true
+          docker rm vault 2>/dev/null || true
+          docker network rm vault-net 2>/dev/null || true

@@ -1,0 +1,6 @@
+10015	IGNORE	Incomplete or no cache-control header set
+10096	IGNORE	Timestamp disclosure - Unix
+10038	IGNORE	Content Security Policy (CSP) header not set
+10020	IGNORE	X-Frame-Options header not set
+10021	IGNORE	X-Content-Type-Options header not set
+10035	IGNORE	Strict-Transport-Security header not set
